@@ -1,11 +1,10 @@
-// Paste your Firebase web-app config here.
-// Firebase console → Project settings (gear icon) → "Your apps" → Web app → "SDK setup and configuration" → Config.
-// While apiKey still says PASTE_API_KEY, the app runs in demo mode (data saved only in this browser).
+// Firebase web-app config for the mymeals-planned project.
+// These values are not secret; access is protected by the Firestore rules.
 export const firebaseConfig = {
-  apiKey: "PASTE_API_KEY",
-  authDomain: "",
-  projectId: "",
-  storageBucket: "",
-  messagingSenderId: "",
-  appId: ""
+  apiKey: "AIzaSyAwpZehJEzkjsblBq6hwShZDd-CUOiYeQQ",
+  authDomain: "mymeals-planned.firebaseapp.com",
+  projectId: "mymeals-planned",
+  storageBucket: "mymeals-planned.firebasestorage.app",
+  messagingSenderId: "217039689459",
+  appId: "1:217039689459:web:b0291aa5aba4e7a32c8986"
 };
