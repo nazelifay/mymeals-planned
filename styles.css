@@ -121,6 +121,13 @@ main { padding: 20px; }
 }
 .cell.over, .placing .cell:hover { background: var(--accent-soft); border-color: var(--accent); border-style: solid; }
 .placing .cell { cursor: copy; }
+.prep-head { color: var(--accent); padding-top: 18px; }
+.prep-cell { padding-top: 8px; border-top: 2px solid var(--line); }
+.prep-note {
+  resize: none; overflow: hidden; min-height: 76px; font-size: 13px; line-height: 1.4;
+  background: #fffaf3; border: 1px solid var(--line); border-radius: var(--radius); padding: 7px 8px;
+}
+.prep-note::placeholder { color: #b8aea4; }
 .entry { display: flex; align-items: flex-start; justify-content: space-between; gap: 4px; font-size: 13px; padding: 4px 6px 4px 8px; }
 .x { border: none; background: none; padding: 0 3px; color: var(--muted); font-size: 16px; line-height: 1; }
 .x:hover { color: var(--danger); }
@@ -137,6 +144,13 @@ main { padding: 20px; }
 .form-row { display: flex; gap: 10px; flex-wrap: wrap; }
 .form-row .grow { flex: 1 1 240px; }
 .form-row .narrow { width: 100px; }
+.cat-pick { border: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.cat-pick legend { font-size: 13px; font-weight: 600; color: var(--muted); padding: 0; margin-bottom: 6px; }
+.recipe-form label.cat-pill { flex-direction: row; cursor: pointer; padding: 0; color: var(--text); font-weight: 500; font-size: 14px; border-radius: 99px; }
+.cat-pill input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.cat-pill span { padding: 6px 14px; border-radius: 99px; border: 2px solid transparent; }
+.cat-pill input:checked + span { border-color: var(--accent); font-weight: 700; }
+.cat-pill input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
 .ing-head { display: flex; flex-direction: column; font-weight: 600; }
 .ing-head small { font-weight: 400; }
 #ing-rows { display: flex; flex-direction: column; gap: 6px; }

@@ -72,8 +72,8 @@ export async function deleteRecipe(id) {
 }
 
 /* ---------- weekly plans (one document per week, keyed by Monday's date) ---------- */
-const emptyPlan = () => ({ days: {}, checked: {} });
-const normPlan = (p) => ({ days: p?.days || {}, checked: p?.checked || {} });
+const emptyPlan = () => ({ days: {}, checked: {}, notes: {} });
+const normPlan = (p) => ({ days: p?.days || {}, checked: p?.checked || {}, notes: p?.notes || {} });
 
 export function watchPlan(weekId, cb) {
   if (isLocal) return lsub('plan:' + weekId, emptyPlan(), (p) => cb(normPlan(p)));

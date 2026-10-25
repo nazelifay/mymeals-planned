@@ -26,6 +26,8 @@ const state = {
   error: '',
 };
 let unsubPlan = null, unsubRecipes = null, unsubSettings = null;
+let pending = null;          // unsaved cook & prep notes: { week, notes: { [day]: text } }
+let noteTimer = null;
 const app = document.getElementById('app');
 
 /* ---------- helpers ---------- */
@@ -69,16 +71,52 @@ function teardown() {
   unsubPlan = unsubRecipes = unsubSettings = null;
 }
 function watchWeek() {
+  flushNotes();
   if (unsubPlan) unsubPlan();
-  state.plan = { days: {}, checked: {} };
-  unsubPlan = store.watchPlan(weekId(state.weekStart), (p) => { state.plan = p; refresh(); });
+  state.plan = { days: {}, checked: {}, notes: {} };
+  unsubPlan = store.watchPlan(weekId(state.weekStart), (p) => { applyPendingNotes(p); state.plan = p; refresh(); });
 }
+
+/* Cook & prep notes: typed text is kept in `pending` and saved shortly after typing stops,
+   so incoming updates never overwrite what is being typed. */
+function applyPendingNotes(plan) {
+  if (!pending || pending.week !== weekId(state.weekStart)) return plan;
+  plan.notes = { ...(plan.notes || {}), ...pending.notes };
+  return plan;
+}
+function queueNote(day, text) {
+  const week = weekId(state.weekStart);
+  if (!pending || pending.week !== week) pending = { week, notes: {} };
+  pending.notes[day] = text;
+  (state.plan.notes ||= {})[day] = text;
+  clearTimeout(noteTimer);
+  noteTimer = setTimeout(flushNotes, 700);
+}
+function flushNotes() {
+  clearTimeout(noteTimer);
+  if (!pending) return;
+  const { week } = pending;
+  if (week === weekId(state.weekStart)) {
+    applyPendingNotes(state.plan);
+    pending = null;
+    store.savePlan(week, state.plan);
+  } else {
+    // week already changed: merge into that week's stored plan
+    const notes = pending.notes;
+    pending = null;
+    store.getPlan(week).then((p) => { p.notes = { ...p.notes, ...notes }; store.savePlan(week, p); });
+  }
+}
+window.addEventListener('pagehide', flushNotes);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushNotes(); });
 function refresh() {
   if (state.view === 'plan') { renderLibrary(); renderGrid(); }
   if (state.view === 'recipes') renderRecipeList();
   if (state.view === 'groceries') renderGroceries();
 }
 function savePlan(plan) {
+  applyPendingNotes(plan);
+  pending = null; clearTimeout(noteTimer);
   state.plan = plan;
   refresh();
   store.savePlan(weekId(state.weekStart), plan);
@@ -209,8 +247,22 @@ function renderGrid() {
         }).join('') + '</div>';
     });
   });
+  html += `<div class="slot-head prep-head">Cook &amp; prep</div>`;
+  DAYS.forEach((d, day) => {
+    html += `<div class="prep-cell"><textarea class="prep-note" data-note-day="${day}" rows="3" aria-label="Cook and prep notes for ${d}" placeholder="Cook…, prep…">${esc(state.plan.notes?.[day] || '')}</textarea></div>`;
+  });
+
+  // keep the cursor where it was if someone is typing in a note
+  const active = document.activeElement;
+  const typing = active?.matches?.('.prep-note') ? { day: active.dataset.noteDay, start: active.selectionStart, end: active.selectionEnd, value: active.value } : null;
   grid.innerHTML = html;
+  grid.querySelectorAll('.prep-note').forEach(autoGrow);
+  if (typing) {
+    const t = grid.querySelector(`.prep-note[data-note-day="${typing.day}"]`);
+    if (t) { t.value = typing.value; autoGrow(t); t.focus(); t.setSelectionRange(typing.start, typing.end); }
+  }
 }
+function autoGrow(t) { t.style.height = 'auto'; t.style.height = t.scrollHeight + 2 + 'px'; }
 
 function addEntry(day, slot, rid) {
   const p = clone(state.plan);
@@ -232,7 +284,8 @@ function moveEntry(from, to) {
   (p.days[to.day][to.slot] ||= []).push(e);
   savePlan(p);
 }
-const planIsEmpty = (p) => Object.values(p.days || {}).every((d) => Object.values(d || {}).every((a) => !a?.length));
+const planIsEmpty = (p) => Object.values(p.days || {}).every((d) => Object.values(d || {}).every((a) => !a?.length))
+  && Object.values(p.notes || {}).every((t) => !String(t || '').trim());
 
 /* ---------- recipes view ---------- */
 function renderRecipeList() {
@@ -277,15 +330,18 @@ function ingRow(i = {}) {
 }
 function openRecipeForm(r = null) {
   const wrap = document.getElementById('recipe-form-wrap');
-  const data = r || { name: '', category: 'Main', servings: 2, ingredients: [{}, {}, {}], notes: '' };
+  const data = r || { name: '', category: '', servings: 2, ingredients: [{}, {}, {}], notes: '' };
   wrap.innerHTML = `
     <form id="recipe-form" class="recipe-form" data-rid="${esc(r?.id || '')}">
       <h2>${r ? 'Edit recipe' : 'New recipe'}</h2>
       <div class="form-row">
         <label class="grow">Name<input name="name" required value="${esc(data.name)}" placeholder="e.g. Mashed potatoes"></label>
-        <label>Category<select name="category">${options(CATEGORIES, data.category)}</select></label>
         <label class="narrow">Servings<input name="servings" type="number" min="1" step="1" value="${esc(data.servings ?? '')}"></label>
       </div>
+      <fieldset class="cat-pick">
+        <legend>Category</legend>
+        ${CATEGORIES.map((c) => `<label class="cat-pill cat-${c.toLowerCase()}"><input type="radio" name="category" value="${esc(c)}" required${c === data.category ? ' checked' : ''}><span>${esc(c)}</span></label>`).join('')}
+      </fieldset>
       <div class="ing-head"><span>Ingredients</span><small class="muted">Use the same ingredient names across recipes so the grocery list can add them up.</small></div>
       <div id="ing-rows">${(data.ingredients?.length ? data.ingredients : [{}]).map(ingRow).join('')}</div>
       <button type="button" class="link" data-act="add-ing">+ Add ingredient</button>
@@ -410,12 +466,16 @@ app.addEventListener('click', async (e) => {
       watchWeek();
     }
     else if (a === 'remove-entry') { e.stopPropagation(); removeEntry(+act.dataset.day, act.dataset.slot, +act.dataset.idx); }
-    else if (a === 'clear-week') { if (!planIsEmpty(state.plan) && confirm('Clear every meal from this week?')) savePlan({ days: {}, checked: {} }); }
+    else if (a === 'clear-week') {
+      flushNotes();
+      if (!planIsEmpty(state.plan) && confirm('Clear every meal and cook & prep note from this week?')) savePlan({ days: {}, checked: {}, notes: {} });
+    }
     else if (a === 'copy-prev') {
+      flushNotes();
       const prev = await store.getPlan(weekId(addDays(state.weekStart, -7)));
-      if (planIsEmpty(prev)) { alert('Last week has no meals to copy.'); return; }
-      if (!planIsEmpty(state.plan) && !confirm('Replace this week with last week’s plan?')) return;
-      savePlan({ days: prev.days, checked: {} });
+      if (planIsEmpty(prev)) { alert('Last week has nothing to copy.'); return; }
+      if (!planIsEmpty(state.plan) && !confirm('Replace this week with last week’s plan and notes?')) return;
+      savePlan({ days: prev.days, checked: {}, notes: prev.notes || {} });
     }
     else if (a === 'new-recipe') openRecipeForm();
     else if (a === 'edit-recipe') openRecipeForm(recipeById(act.dataset.rid));
@@ -449,6 +509,7 @@ app.addEventListener('click', async (e) => {
 app.addEventListener('input', (e) => {
   if (e.target.id === 'lib-search') { state.libFilter = e.target.value; renderLibrary(); }
   if (e.target.id === 'rec-search') { state.recFilter = e.target.value; renderRecipeList(); }
+  if (e.target.matches('.prep-note')) { autoGrow(e.target); queueNote(e.target.dataset.noteDay, e.target.value); }
 });
 app.addEventListener('change', (e) => {
   if (e.target.id === 'lib-cat') { state.libCat = e.target.value; renderLibrary(); }
@@ -472,6 +533,8 @@ app.addEventListener('change', (e) => {
     }
   }
 });
+// save after focus has moved on, so clicking straight into another day's box keeps the cursor there
+app.addEventListener('focusout', (e) => { if (e.target.matches?.('.prep-note')) setTimeout(flushNotes, 0); });
 app.addEventListener('submit', (e) => {
   if (e.target.id === 'recipe-form') { e.preventDefault(); submitRecipe(e.target); }
 });
